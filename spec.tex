@@ -1,8 +1,176 @@
 \documentclass{article}
-\author{Caveman}
-\title{Caveman Socket Layer\\
-{\large Fixing Decadence in SSL/TLS}}
-\begin{document}
-\maketitle
-\section{test}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{arabtex}    % to handle arabic
+\usepackage{utf8}       % to handle arabic
+\setcode{utf8}          % to handle arabic
+\author{Caveman\\
+email: toraboracaveman@gmail.com\\
+website: \url{https://github.com/al-caveman/csl}}
+\title{The Caveman Socket Layer (CSL) Version 0.0.0\\
+De Holbewoner Socket Laag (HCL) Versie 0.0.0\\
+0.0.0 \<طَبَقَةُ مِقْبَسِ رَجُلِ الكهفِ (طَمِرَك) إصدارة>\\
+{\large Fixing Decadence in SSL/TLS}\\
+{\large Festsetzung Der Dekadenz in SSL/TLS}\\
+{\large \<إصلاح الإنحطاط في إس إس إل أو تي إل إس>}}
+\begin{document} \maketitle
+\begin{abstract}
+    Basically, TLS/SSL sucks. They do too much dance, and PKI and shit. Result?
+    Too much hard-to-spot real issues, and you end up needing to trust over
+    $300$ CAs, which is probably more than the HTTPS websites that you visit
+    per year that you care about. If you think about it, you probably care
+    about your email, eBay, Amazon, online banking, etc, which --if you list--
+    you will realize that they are less than $300$ many SSL/TLS services that
+    you visit. So it is practically more scalable for you to simply white-list
+    special keys per ``secure'' service that you use than white-listing $300+$
+    CAs. This is funny, cause one of the points of white-listing CAs is that
+    you will, supposedly, never need to white-list more cause there are fewer
+    CAs than there are secure services that you care about. But it's funny that
+    the CAs that you white-list in your OS are more than the secure services
+    that you care about. So the CA scalability argument is just tossed right
+    there. Total bullshit. Fuck that. Here I fix that by proposing the Caveman
+    Socket Layer (CSL) which has two key properties: 1) simple, and 2) works.
+    Because of its simplicity, you will be less likely to end up having
+    security holes because of weird unpredictable mathematical voodoo. E.g. in
+    RSA, if your random sequences, or the random sequences of the other end,
+    are shit, then your entire security is shit.  CSL fixes that and more.
+    Plus, CSL works just as securely, if not better.
+\end{abstract}
+\section{Specification}
+We got a client, and a server that's identified as $S$  and is listening on
+port $P$. The identifier $S$ could be the domain name, IP address, etc. The
+client chooses how it identifies the server based on client's policies. Client
+wishes to communicate with server. Procedure goes as follows:
+\begin{enumerate}
+    \item Server, when initializing the CSL service, needs to generate a good
+    random sequence. Perhaps by using \texttt{/dev/random}, or whatever other
+    method. We don't care about that. All we need, get enough random bits. How
+    many bits are enough? This to be decided by the DevOps at hand. But for
+    now, we get a random sequence, which we call $R_s$ for now.
+    \item Then, after we have $R_s$ figured out, we can start the CSL service
+    and have it listen on port $P$.
+    \item If there is no CSL caching entry in the client about $S$:
+        \begin{enumerate}
+            \item Client warns user ``\emph{$S$ is a new server, wanna learn
+            its CSL fingerprint?}''. Unless user chooses ``\emph{yes}'',
+            process will terminate right here.
+            \item Client uses $S$ to identify how to communicate with the
+            server. E.g.  if $S$ is the domain name, client performs a DNS
+            lookup to get the IP address of the server.
+            \item Client opens TCP (or UDP? Whatever) connection to port $P$.
+            \item Client and server do the Diffie-Hellman dance to agree on a
+            an encryption key $k$. From now and on, all exchanged messages by
+            the client or the server are encrypted by using some symmetric
+            encryption function $e$ (e.g. $e$ could be some variant of AES?)
+            using key $k$:
+                \begin{enumerate}
+                    \item Client generates its own random sequence $R_c$.
+                    \item Client sends the following TLV tuple: $(\text{init},
+                    n, R_c)$ to server via this connection, where ``init''
+                    denotes that this is the initialization phase, $n$ denotes
+                    size of $R_c$ probably in octets, or whatever other more
+                    convenient unit.
+                    \item Server reads $R_c$, and sends the TLV
+                    $\big(\text{initre}, n, h(R_s + R_c)\big)$, where $h$ is
+                    some lovely hashing function that tickles your fancy (e.g.
+                    SHA3), and $+$ denotes concatenation.
+                \end{enumerate}
+            \item Client then locally caches the following information:
+                \begin{itemize}
+                    \item $S$.
+                    \item $R_c$.
+                    \item $h(R_s + R_c)$.
+                \end{itemize}
+            \item Client and server then proceed communicating with each other
+            using one-time pad-\emph{ish} encryption scheme (except for using a
+            seeded secure PRNG, CPRNG, instead of a truly random sequence) that
+            relies on the following indefinitely long random sequence that is
+            defined in $n$ long chunks of random bytes/octets/whatever unit we
+            agreed about earlier, such that the $i^{th}$ chunk of random bits,
+            $c_i$, is defined as follows:
+            \begin{equation}
+                c_i = 
+                \begin{cases}
+                    e(c_{i-1}) & \text{ if } i > 1\\
+                    h(R_s + R_c) & \text{ else}\\
+                \end{cases}
+            \end{equation}
+
+            \textbf{Note 1:} total entropy we have here depends on $n$, which
+            affects the size of $R_c$ and $R_s$. So if we choose large $n$, the
+            more security we will have.
+
+            \textbf{Note 2:} these random bits are not exchanged during the
+            connection, or per connection. They are only generated locally off
+            the initial sequence $c_1 = h(R_s + R_c)$, which is taken from the
+            cache as exchanged during the initialization phase when $S$ was not
+            found in the local cache.
+
+            \textbf{Note 3:} the generation of the seeded CPRNG can, obviously,
+            be done in an online manner as you are sending more and more data.
+            \item Upon connection termination, while using the encryption
+            one-time pad-\emph{ish} session above, the following is done:
+                \begin{enumerate}
+                    \item Client generates a new random sequence, $R_d$.
+                    \item Client sends TLV tuple $(\text{init}, n, R_d)$ to
+                    server.
+                    \item Server responds by $h(R_s + R_d)$.
+                    \item Client updates its local cache regarding server $S$
+                    as follows:
+                        \begin{itemize}
+                            \item $S$.
+                            \item $R_c := R_d$.
+                            \item $h(R_s + R_c) := h(R_s + R_d)$.
+                        \end{itemize}
+                        where $:=$ is assignment.
+                \end{enumerate}
+        \end{enumerate}
+    If there is a CSL caching entry in the client about $S$:
+    \begin{enumerate}
+        \item Client connects to $S$ at port $P$.
+        \item Client sends TLV tuple $(\text{auth}, n, R_c)$ to server.
+        \item Client then sends the following TLV, encrypted using the
+        one-time pad-\emph{ish} algorithm described above and the cached $R_c$
+        and $h(R_s + R_c)$ values: $(\text{init}, n, R_c)$.
+        \item Within this one-time pad-\emph{ish} encryption channel, the
+        server responds: $\hat h(R_s + R_c)$
+        \item If $\hat h(R_s + R_c) \ne h(R_s + R_c)$:
+            \begin{enumerate}
+                \item Warn user and terminate connection. Perhaps maybe ask
+                user if he/she wants to re-negotiate a new server fingerprint?
+                This is left to the user interface side, but for now, we can
+                say at least "warn".
+            \end{enumerate}
+        Else, i.e. if $\hat h(R_s + R_c) = h(R_s + R_c)$:
+            \begin{enumerate}
+                \item Client generates a new random sequence $R_e$.
+                \item Client sends $(\text{init}, n, R_e)$ to server.
+                \item Server replies $h(R_s + R_e)$.
+                \item Client updates cache.
+                \item Client and server communicate using the one-time
+                pad-\emph{ish} algorithm with the indefinitely long CPRNG that
+                is generated off the seed $h(R_s+R_e)$.
+                \item Upon connection termination, the client updates the cache
+                entry.
+            \end{enumerate}
+        \textbf{Note 4:} note how the client and server avoid the use of DH for
+        when there is a CSL cache entry. DH was only used when there was no CSL
+        cache entry. This should bring more speed gains.
+
+    \end{enumerate}
+\end{enumerate}
+
+\section{Discussion}
+If you think about it, you will realize that this is better than SSL/TLS for
+practical purposes for whatever SSL/TLS is used for today. You can ask me
+questions via email or IRC. You can get IRC info via email.
+
+Minor refinements are needed about the message formats, or
+about how new CSL server fingerprints are negotiated. But the general idea
+remains the same. If you think deep enough, you'd realize that this is superior
+to SSL/TLS as it avoids the stupid PKI architecture, much faster, and much
+simpler algorithm that significantly minimizes change of leaving mathematical
+loopholes.
+
 \end{document}
