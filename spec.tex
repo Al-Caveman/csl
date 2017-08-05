@@ -158,9 +158,11 @@ wishes to communicate with server. Procedure goes as follows:
         \textbf{Note 4:} note how the client and server avoid the use of DH for
         when there is a CSL cache entry. DH was only used when there was no CSL
         cache entry. This should bring more speed gains.
-
     \end{enumerate}
 \end{enumerate}
+
+\textbf{Note about SNI:} everything happens as usual, except for sending the
+TLV $(\text{fwd}, n, \text{www.domain.com})$ first.
 
 \section{Discussion}
 If you think about it, you will realize that this is better than SSL/TLS for
