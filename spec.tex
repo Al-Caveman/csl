@@ -38,7 +38,10 @@ The Caveman Socket Layer (CSL) Version 0.1.3\\
     are shit, then your entire security is shit.  CSL fixes that and more.
     Plus, CSL works just as securely, if not better.
 \end{abstract}
-\section{Specification}
+
+\tableofcontents
+
+\section{Overview}
 We got a client, and a server that's identified as $S$  and is listening on
 port $P$. The identifier $S$ could be the domain name, IP address, etc. The
 client chooses how it identifies the server based on client's policies. Client
@@ -60,9 +63,9 @@ wishes to communicate with server. Procedure goes as follows:
             server. E.g.  if $S$ is the domain name, client performs a DNS
             lookup to get the IP address of the server.
             \item Client opens TCP (or UDP? Whatever) connection to port $P$.
-            \item Client and server do the Diffie-Hellman dance to agree on a
-            an encryption key $k$. From now and on, all exchanged messages by
-            the client or the server are encrypted by using some symmetric
+            \item Client and server do the Diffie-Hellman (DH) dance to agree
+            on a an encryption key $k$. From now and on, all exchanged messages
+            by the client or the server are encrypted by using some symmetric
             encryption function $e$ (e.g. $e$ could be some variant of AES?)
             using key $k$:
                 \begin{enumerate}
@@ -163,6 +166,43 @@ wishes to communicate with server. Procedure goes as follows:
 
 \textbf{Note about SNI:} everything happens as usual, except for sending the
 TLV $(\text{fwd}, n, \text{www.domain.com})$ first.
+
+\section{Messages Format}
+All CSL data are communicated using messages that are formated as per the TLV
+tuple \begin{tabular}{|l|l|l|}\hline
+$t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
+\end{tabular}, with large-endian encoding.
+
+\section{Message Types}
+\subsection{Initial Encryption Channel}
+\begin{itemize}
+    \item $t = 0$.
+    \item $n \in \{1,2,\ldots,2^{32}\}$.
+    \item $d \in \{0,1,\ldots,8\}^n$.
+    \item Usage: used to signal that the sending peer is interested in finding
+    a shared key based on $d$ and DH, and then to start communicating over a
+    symmetric encrypted channel that uses the shared key. 
+    \item Behaviour:
+        \begin{enumerate}
+            \item Client starts the DH process locally to calculate the number
+            that is to be publicly shared with the server. This number is sent
+            as $d_c$ along with its size $n_c$ using this message type.
+            \item When the server receives this message, it, too, starts its
+            own DH process to send its own publicly-shared number as $d_s$
+            along with its length $n_s$ to the client, by using the same
+            message type. The server then computes the shared key $k_s$. Now,
+            any data the server receives from the client must be encrypted by
+            $k_s$, and any data the server sends to the client must be
+            encrypted by $k_s$.
+            \item When the client receives the number $d$ from the server, the
+            client then also computes the shared key $k_c$.  Now, any data the
+            client receives from the server must be encrypted by $k_c$, and any
+            data the client sends to the server must be encrypted by $k_c$.
+            Thank to the way DH works, we know that $k_s = k_c$, and a
+            symmetric encryption channel can start.
+        \end{enumerate}
+\end{itemize}
+
 
 \section{Discussion}
 If you think about it, you will realize that this is better than SSL/TLS for
