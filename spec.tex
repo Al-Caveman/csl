@@ -9,9 +9,9 @@
 email: toraboracaveman@gmail.com\\
 website: \url{https://github.com/al-caveman/csl}}
 \title{
-0.0.1 \<طَبَقَةُ مِقْبَسِ رَجُلِ الكهفِ (طَمِرَك) إصدارة>\\
-De Holbewoner Socket Laag (HSL) Versie 1.0.0\\
-The Caveman Socket Layer (CSL) Version 1.0.0\\
+0.1.1 \<طَبَقَةُ مِقْبَسِ رَجُلِ الكهفِ (طَمِرَك) إصدارة>\\
+De Holbewoner Socket Laag (HSL) Versie 1.1.0\\
+The Caveman Socket Layer (CSL) Version 1.1.0\\
 {\large \<إصلاح الإنحطاط في إس إس إل أو تي إل إس>}\\
 {\large Festsetzung der Dekadenz in TLS/SSL}\\
 {\large Fixing the Decadence in SSL/TLS}}
@@ -87,34 +87,11 @@ wishes to communicate with server. Procedure goes as follows:
                     \item $h(R_s + R_c)$.
                 \end{itemize}
             \item Client and server then proceed communicating with each other
-            using one-time pad-\emph{ish} encryption scheme (except for using a
-            seeded secure PRNG, CPRNG, instead of a truly random sequence) that
-            relies on the following indefinitely long random sequence that is
-            defined in $n$ long chunks of random bytes/octets/whatever unit we
-            agreed about earlier, such that the $i^{th}$ chunk of random bits,
-            $c_i$, is defined as follows:
-            \begin{equation}
-                c_i = 
-                \begin{cases}
-                    e(c_{i-1}) & \text{ if } i > 1\\
-                    h(R_s + R_c) & \text{ else}\\
-                \end{cases}
-            \end{equation}
+            using a stream cipher using $h(R_s + R_c)$ as the
+            encryption/decyption pre-shared key.
 
-            \textbf{Note 1:} total entropy we have here depends on $n$, which
-            affects the size of $R_c$ and $R_s$. So if we choose large $n$, the
-            more security we will have.
-
-            \textbf{Note 2:} these random bits are not exchanged during the
-            connection, or per connection. They are only generated locally off
-            the initial sequence $c_1 = h(R_s + R_c)$, which is taken from the
-            cache as exchanged during the initialization phase when $S$ was not
-            found in the local cache.
-
-            \textbf{Note 3:} the generation of the seeded CPRNG can, obviously,
-            be done in an online manner as you are sending more and more data.
-            \item Upon connection termination, while using the encryption
-            one-time pad-\emph{ish} session above, the following is done:
+            \item Upon connection termination, while still being in the
+            encryption channel, the following is done:
                 \begin{enumerate}
                     \item Client generates a new random sequence, $R_d$.
                     \item Client sends TLV tuple $(\text{init}, n, R_d)$ to
@@ -135,9 +112,9 @@ wishes to communicate with server. Procedure goes as follows:
         \item Client connects to $S$ at port $P$.
         \item Client sends TLV tuple $(\text{auth}, n, R_c)$ to server.
         \item Client then sends the following TLV, encrypted using the
-        one-time pad-\emph{ish} algorithm described above and the cached $R_c$
+        stream cipher described above and the cached $R_c$
         and $h(R_s + R_c)$ values: $(\text{init}, n, R_c)$.
-        \item Within this one-time pad-\emph{ish} encryption channel, the
+        \item Within this stream cipher encryption channel, the
         server responds: $\hat h(R_s + R_c)$
         \item If $\hat h(R_s + R_c) \ne h(R_s + R_c)$:
             \begin{enumerate}
@@ -152,9 +129,8 @@ wishes to communicate with server. Procedure goes as follows:
                 \item Client sends $(\text{init}, n, R_e)$ to server.
                 \item Server replies $h(R_s + R_e)$.
                 \item Client updates cache.
-                \item Client and server communicate using the one-time
-                pad-\emph{ish} algorithm with the indefinitely long CPRNG that
-                is generated off the seed $h(R_s+R_e)$.
+                \item Client and server communicate using stream cipher with
+                key $h(R_s+R_e)$.
                 \item Upon connection termination, the client updates the cache
                 entry.
             \end{enumerate}
@@ -171,34 +147,17 @@ TLV $(\text{fwd}, n, \text{www.domain.com})$ first.
 All CSL data are communicated, using big-endian byte order per field, and
 messages that are formated as the following tuples:
 \begin{itemize}
-    \item TLV:
-        \begin{tabular}{|l|l|l|}\hline
-            $t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
-        \end{tabular}.
     \item TV: 
         \begin{tabular}{|l|l|}\hline
             $t$ (8 bits) & $d$ (length defined per $t$)\\\hline
         \end{tabular}
-    \item T: 
-        \begin{tabular}{|l|}\hline
-            $t=0$ (8 bits)\\\hline
-        \end{tabular}
+    \item TLV:
+        \begin{tabular}{|l|l|l|}\hline
+            $t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
+        \end{tabular}.
 \end{itemize}
 
 \section{Message Types}
-\subsection{Pad (T)}
-\begin{itemize}
-    \item $t = 0$ (8 bits, in decimal).
-    \item Overview: a padding value to achieve certain message value length. 
-    \item Prerequisite: none.
-    \item Usage:
-        \begin{enumerate}
-            \item Client or server can send as many such pads as needed.
-            \item The values of such pads are ignored by both client and
-            server.
-        \end{enumerate}
-\end{itemize}
-
 \subsection{Version (TV)}
 \begin{itemize}
     \item $t = 1$ (in decimal).
@@ -209,8 +168,9 @@ messages that are formated as the following tuples:
         \begin{enumerate}
             \item Client sends the TLV with $d=0$ to denote that this is
             version 0.
-            \item When using version $0$, the hashing function is SHA-3, and
+            \item When using version $0$, the hashing function is SHA3-256, and
             $15$ is the DH group as per RFC3626.
+            \item AES in CTR mode is used for the stream cipher.
         \end{enumerate}
 \end{itemize}
 
@@ -376,7 +336,8 @@ messages that are formated as the following tuples:
             \item Server must then ensure that all message values that it sends
             to be padded by zeros (if necessary), such that the total length of
             the message values equals $d$. Note, this does not affect the $n$.
-            I.e. $n$ is set to the correct message length.
+            I.e. $n$ is set to the true message length before any pads are
+            postfixed to the message value.
             \item If server does not honour the required padding to satisfy
             target message length, the client must notify the user of such
             violation. Note: the client can always apply padding to its own
