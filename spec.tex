@@ -9,9 +9,9 @@
 email: toraboracaveman@gmail.com\\
 website: \url{https://github.com/al-caveman/csl}}
 \title{
-3.1.0 \<طَبَقَةُ مِقْبَسِ رَجُلِ الكهفِ (طَمِرَك) إصدارة>\\
-De Holbewoner Socket Laag (HSL) Versie 0.1.3\\
-The Caveman Socket Layer (CSL) Version 0.1.3\\
+0.0.1 \<طَبَقَةُ مِقْبَسِ رَجُلِ الكهفِ (طَمِرَك) إصدارة>\\
+De Holbewoner Socket Laag (HSL) Versie 1.0.0\\
+The Caveman Socket Layer (CSL) Version 1.0.0\\
 {\large \<إصلاح الإنحطاط في إس إس إل أو تي إل إس>}\\
 {\large Festsetzung der Dekadenz in TLS/SSL}\\
 {\large Fixing the Decadence in SSL/TLS}}
@@ -70,11 +70,11 @@ wishes to communicate with server. Procedure goes as follows:
             using key $k$:
                 \begin{enumerate}
                     \item Client generates its own random sequence $R_c$.
-                    \item Client sends the following TLV tuple: $(\text{init},
-                    n, R_c)$ to server via this connection, where ``init''
-                    denotes that this is the initialization phase, $n$ denotes
-                    size of $R_c$ probably in octets, or whatever other more
-                    convenient unit.
+                    \item Client sends the following Type-Length-Value (TLV)
+                    tuple: $(\text{init}, n, R_c)$ to server via this
+                    connection, where ``init'' denotes that this is the
+                    initialization phase, $n$ denotes size of $R_c$ probably in
+                    octets, or whatever other more convenient unit.
                     \item Server reads $R_c$, and sends the TLV
                     $\big(\text{initre}, n, h(R_s + R_c)\big)$, where $h$ is
                     some lovely hashing function that tickles your fancy (e.g.
@@ -168,21 +168,77 @@ wishes to communicate with server. Procedure goes as follows:
 TLV $(\text{fwd}, n, \text{www.domain.com})$ first.
 
 \section{Messages Format}
-All CSL data are communicated using messages that are formated as per the TLV
-tuple \begin{tabular}{|l|l|l|}\hline
-$t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
-\end{tabular}, with large-endian encoding.
+All CSL data are communicated, using big-endian byte order per field, and
+messages that are formated as the following tuples:
+\begin{itemize}
+    \item TLV:
+        \begin{tabular}{|l|l|l|}\hline
+            $t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
+        \end{tabular}.
+    \item TV: 
+        \begin{tabular}{|l|l|}\hline
+            $t$ (8 bits) & $d$ (length defined per $t$)\\\hline
+        \end{tabular}
+    \item T: 
+        \begin{tabular}{|l|}\hline
+            $t=0$ (8 bits)\\\hline
+        \end{tabular}
+\end{itemize}
 
 \section{Message Types}
-\subsection{Initial Encryption Channel}
+\subsection{Pad (T)}
 \begin{itemize}
-    \item $t = 0$.
-    \item $n \in \{1,2,\ldots,2^{32}\}$.
-    \item $d \in \{0,1,\ldots,8\}^n$.
-    \item Usage: used to signal that the sending peer is interested in finding
-    a shared key based on $d$ and DH, and then to start communicating over a
-    symmetric encrypted channel that uses the shared key. 
-    \item Behaviour:
+    \item $t = 0$ (8 bits, in decimal).
+    \item Overview: a padding value to achieve certain message value length. 
+    \item Prerequisite: none.
+    \item Usage:
+        \begin{enumerate}
+            \item Client or server can send as many such pads as needed.
+            \item The values of such pads are ignored by both client and
+            server.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Version (TV)}
+\begin{itemize}
+    \item $t = 1$ (in decimal).
+    \item $d = 0$ (8 bits long, in decimal).
+    \item Overview: to advertise client's version. 
+    \item Prerequisite: none.
+    \item Usage:
+        \begin{enumerate}
+            \item Client sends the TLV with $d=0$ to denote that this is
+            version 0.
+            \item When using version $0$, the hashing function is SHA-3, and
+            $15$ is the DH group as per RFC3626.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Bye (TV)}
+\begin{itemize}
+    \item $t = 2$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}$ (8 bits long, in decimal).
+    \item Overview: to define cause of termination. 
+    \item Prerequisite: none.
+    \item Usage:
+        \begin{enumerate}
+            \item Terminating peer sets $d=0$ if cause of termination cause is
+            due to unsupported versions. Note: this only indicates the cause of
+            termination, while the termination itself is carried out by the
+            transport layer.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Initial Encryption Channel (TLV)}
+\begin{itemize}
+    \item $t = 3$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: used to signal that the sending peer is interested in
+    finding a shared key based on $d$ and DH, and then to start communicating
+    over a symmetric encrypted channel that uses the shared key. 
+    \item Prerequisite: none.
+    \item Usage:
         \begin{enumerate}
             \item Client starts the DH process locally to calculate the number
             that is to be publicly shared with the server. This number is sent
@@ -203,6 +259,130 @@ $t$ (8 bits) & $n$ (32 bits) & $d$ (length bits)\\\hline
         \end{enumerate}
 \end{itemize}
 
+\subsection{Encrypted Signalling Message (TLV)}
+\begin{itemize}
+    \item $t = 4$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: send some encrypted data by using the latest key that was
+    agreed upon. The receiver must decrypt it, and then parse the decrypted
+    form as a CSL TLV.
+    \item Prerequisite: encryption shared key must be known.
+    \item Usage:
+        \begin{enumerate}
+            \item The sender sets $d$ to be some encrypted message, and $n$ to
+            be the length of $d$.
+            \item The sender must encrypt $d$ by the latest agreed encryption
+            shared key.
+            \item The receiver must decrypt $d$ by the latest agreed encryption
+            shared key.
+            \item The receiver must then parse the decrypted $d$ as a CSL TLV,
+            and act upon it accordingly.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Encrypted Data Message (TLV)}
+\begin{itemize}
+    \item $t = 5$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: send some encrypted data by using the latest key that was
+    agreed upon. The receiver must decrypt it, and then forward the decrypted
+    data as it is to the upper-layer application.
+    \item Prerequisite: encryption shared key must be known.
+    \item Usage:
+        \begin{enumerate}
+            \item The sender sets $d$ to be some encrypted message, and $n$ to
+            be the length of $d$.
+            \item The sender must encrypt $d$ by the latest agreed encryption
+            shared key.
+            \item The receiver must decrypt $d$ by the latest agreed encryption
+            shared key.
+            \item The receiver must then forward the decrypted data to the
+            upper-layer application.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Request Fingerprint (TLV)}
+\begin{itemize}
+    \item $t = 6$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: client asks the server to send a server fingerprint based
+    on client's random sequence $R_c$.
+    \item Prerequisite: this message must be encapsulated in a ``Encrypted
+    Signalling Message''.
+    \item Usage:
+        \begin{enumerate}
+            \item Client sends TLV to the server such that $d = R_c$, and $n$
+            to be the length of $R_c$ in octets.
+            \item Client must not send any other messages to the server.
+            \item Server responds by sending ``Fingerprint'` message.
+            \item Client will act accordingly as described in
+            the``Fingerprint'' message section.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Fingerprint (TLV)}
+\begin{itemize}
+    \item $t = 7$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: server responds to client by sending its fingerprint that
+    is based on client's random sequence $R_c$. This is sent after the server
+    receives a ``Request Fingerprint'' message.
+    \item Prerequisite: a ``Request Fingerprint'' message, that hasn't been
+    addressed, must have been received, and this message must be encapsulated
+    in a ``Encrypted Signalling Message''.
+    \item Usage:
+        \begin{enumerate}
+            \item Server sends to the client a TLV message with $d=h(R_s+R_c)$,
+            and $n$ is the length of that.
+            \item Server must assume that $d$ is the encryption shared key of
+            any subsequently received and sent messages. I.e. all
+            outgoing/incoming messages will be encrypted/decrypted by $d$,
+            respectively.
+            \item When client receives this $d$, it must assume that $d$ is the
+            new shared encryption key. Client is then able to sending encrypted
+            messages to the server.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Server Name Indication (TLV)}
+\begin{itemize}
+    \item $t = 8$ (in decimal).
+    \item $n \in \{1,2,\ldots,2^{32}\}$ (in decimal).
+    \item $d \in \{0,1,\ldots,255\}^n$ (in decimal).
+    \item Overview: client specifies that all subsequent messages are forwarded
+    to the server that is named/identified in $d$.
+    \item Prerequisite: none.
+    \item Usage:
+        \begin{enumerate}
+            \item Receiving server starts relaying all messages from the
+            sending client to the server that is identified by $d$. Likewise,
+            responses from $d$ are relayed back to the sending client.
+        \end{enumerate}
+\end{itemize}
+
+\subsection{Message Size (TV)}
+\begin{itemize}
+    \item $t = 9$ (in decimal).
+    \item $d \in \{1,2,\ldots,2^{32}\}$ (32 bits, in decimal).
+    \item Overview: client sets the message length.
+    \item Prerequisite: none.
+    \item Usage:
+        \begin{enumerate}
+            \item Client sets $d$ to the desired length of messages in octets.
+            \item Server must then ensure that all message values that it sends
+            to be padded by zeros (if necessary), such that the total length of
+            the message values equals $d$. Note, this does not affect the $n$.
+            I.e. $n$ is set to the correct message length.
+            \item If server does not honour the required padding to satisfy
+            target message length, the client must notify the user of such
+            violation. Note: the client can always apply padding to its own
+            messages when sending messages to a server.
+        \end{enumerate}
+\end{itemize}
 
 \section{Discussion}
 If you think about it, you will realize that this is better than SSL/TLS for
